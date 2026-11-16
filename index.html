@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<title>Seconds Clock</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root { --bg:#0b0f14; --face:#121923; --tick:#5b6b7e; --tick5:#e8edf3; --hand:#22d3ee; --muted:#8b97a6; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin:0; height:100%; background:var(--bg); color:#e8edf3; font-family: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; overflow:hidden; }
+  body { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom); user-select:none; }
+  #wrap { width:min(92vw, 78vh); aspect-ratio:1; }
+  canvas { width:100%; height:100%; display:block; }
+  .bar { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; opacity:.9; }
+  button { background:#1b2430; color:#e8edf3; border:1px solid #243040; border-radius:12px; padding:10px 14px; font-size:14px; font-weight:600; }
+  button.on { background:#22d3ee; border-color:#22d3ee; color:#04222a; }
+  .hint { color:var(--muted); font-size:12px; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<div class="bar">
+  <button id="bMode">Smooth sweep</button>
+  <button id="bNum">Number</button>
+  <button id="bAwake">Screen on</button>
+</div>
+<div class="hint" id="hint">Tap the clock to go full screen</div>
+<script>
+(() => {
+  const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+  const load = (k, d) => { try { const v = localStorage.getItem('sc.' + k); return v === null ? d : v === '1'; } catch (e) { return d; } };
+  const save = (k, v) => { try { localStorage.setItem('sc.' + k, v ? '1' : '0'); } catch (e) {} };
+  const opt = { smooth: load('smooth', true), num: load('num', true), awake: load('awake', true) };
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  function size() {
+    const d = window.devicePixelRatio || 1, w = cv.clientWidth;
+    cv.width = Math.round(w * d); cv.height = Math.round(w * d);
+  }
+
+  function draw() {
+    const now = Date.now();
+    const ms = now % 60000;
+    const sec = opt.smooth ? ms / 1000 : Math.floor(ms / 1000);
+    const whole = Math.floor(ms / 1000);
+    const W = cv.width, R = W / 2;
+    ctx.setTransform(1, 0, 0, 1, R, R);
+    ctx.clearRect(-R, -R, W, W);
+
+    // face
+    ctx.fillStyle = css('--face');
+    ctx.beginPath(); ctx.arc(0, 0, R * 0.98, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#243040'; ctx.lineWidth = R * 0.012; ctx.stroke();
+
+    // elapsed arc (fills as the minute passes)
+    const ang = a => a / 60 * Math.PI * 2 - Math.PI / 2;
+    ctx.strokeStyle = 'rgba(34,211,238,.28)'; ctx.lineWidth = R * 0.05; ctx.lineCap = 'butt';
+    ctx.beginPath(); ctx.arc(0, 0, R * 0.80, ang(0), ang(sec)); ctx.stroke();
+
+    // ticks
+    for (let i = 0; i < 60; i++) {
+      const five = i % 5 === 0, a = ang(i);
+      const r1 = R * 0.93, r0 = five ? R * 0.84 : R * 0.89;
+      ctx.strokeStyle = five ? css('--tick5') : css('--tick');
+      ctx.lineWidth = five ? R * 0.022 : R * 0.01;
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(Math.cos(a) * r0, Math.sin(a) * r0); ctx.lineTo(Math.cos(a) * r1, Math.sin(a) * r1); ctx.stroke();
+    }
+
+    // numerals every 5 seconds
+    if (opt.num) {
+      ctx.fillStyle = '#8b97a6'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = `600 ${R * 0.085}px system-ui, sans-serif`;
+      for (let i = 5; i <= 60; i += 5) {
+        const a = ang(i);
+        ctx.fillText(String(i % 60 === 0 ? 60 : i), Math.cos(a) * R * 0.70, Math.sin(a) * R * 0.70);
+      }
+    }
+
+    // digital seconds
+    ctx.fillStyle = '#e8edf3'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = `700 ${R * 0.30}px system-ui, sans-serif`;
+    ctx.fillText(String(whole).padStart(2, '0'), 0, R * 0.30);
+
+    // hand: slim blade with a short counter-tail and a small diamond tip
+    ctx.save(); ctx.rotate(ang(sec) + Math.PI / 2);
+    ctx.strokeStyle = css('--hand'); ctx.fillStyle = css('--hand'); ctx.lineCap = 'round';
+    ctx.lineWidth = R * 0.02;
+    ctx.beginPath(); ctx.moveTo(0, R * 0.16); ctx.lineTo(0, -R * 0.74); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, -R * 0.84); ctx.lineTo(R * 0.03, -R * 0.78); ctx.lineTo(0, -R * 0.72); ctx.lineTo(-R * 0.03, -R * 0.78); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = css('--bg'); ctx.strokeStyle = css('--hand'); ctx.lineWidth = R * 0.016;
+    ctx.beginPath(); ctx.arc(0, 0, R * 0.035, 0, 7); ctx.fill(); ctx.stroke();
+
+    requestAnimationFrame(draw);
+  }
+
+  // buttons
+  const bMode = document.getElementById('bMode'), bNum = document.getElementById('bNum'), bAwake = document.getElementById('bAwake');
+  function sync() {
+    bMode.textContent = opt.smooth ? 'Smooth sweep' : 'Tick each second';
+    bMode.classList.toggle('on', opt.smooth);
+    bNum.classList.toggle('on', opt.num);
+    bAwake.classList.toggle('on', opt.awake);
+  }
+  bMode.onclick = () => { opt.smooth = !opt.smooth; save('smooth', opt.smooth); sync(); };
+  bNum.onclick = () => { opt.num = !opt.num; save('num', opt.num); sync(); };
+  bAwake.onclick = () => { opt.awake = !opt.awake; save('awake', opt.awake); sync(); wake(); };
+
+  // keep screen on
+  let wl = null;
+  async function wake() {
+    try {
+      if (opt.awake && 'wakeLock' in navigator) { if (!wl || wl.released) wl = await navigator.wakeLock.request('screen'); }
+      else if (wl) { await wl.release(); wl = null; }
+    } catch (e) {}
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
+
+  // full screen on tap of the clock
+  document.getElementById('wrap').onclick = () => {
+    try {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else document.documentElement.requestFullscreen();
+    } catch (e) {}
+  };
+
+  window.addEventListener('resize', size);
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  size(); sync(); wake(); draw();
+})();
+</script>
+</body>
+</html>
